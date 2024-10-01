@@ -1,0 +1,10 @@
+ChromeDriver must match the version of Chrome installed on the Windows node. If Chrome updates automatically but you’re still using an older version of ChromeDriver, this mismatch can cause your automation jobs to fail.
+
+Check the Chrome and ChromeDriver Versions:
+
+Find out which version of Chrome is installed on the node by typing chrome://version in the browser.
+Ensure that the ChromeDriver version matches. You can find the compatible versions of ChromeDriver from ChromeDriver's version page.
+Action:
+
+Download and install the correct version of ChromeDriver that matches your version of Chrome.
+Replace the current chromedriver.exe in your project with the correct version, or automate its download using a tool like WebDriverManager.
