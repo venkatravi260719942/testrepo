@@ -15,3 +15,50 @@ Subject: **September Achievements: CJOC Dynamic Agent Enhancements, PVC Fixes, a
    I was responsible for installing Podman on the jumpbox and configuring the `podman.socket` service. I enabled and started the `podman.socket` service, allowing the jumpbox to communicate with Podman remotely. This setup was critical for building Docker images, tagging them, and pushing them to Artifactory. The transition to using Podman instead of Docker resolved the company's policy restrictions related to Docker socket volume mounts, ensuring compliance with internal security policies while maintaining the integrity of the image build and deployment processes.
 
 ---
+CloudBees Jenkins Job Restoration
+Overview
+This documentation details the process of restoring Jenkins jobs from S3 backups in a CloudBees Jenkins setup hosted on EKS. A common Jenkins freestyle job has been configured to facilitate restoration for 10 different controllers, using the latest 10 days of build_dir folder backups.
+
+Key Features
+Backup Strategy: Backups of the build_dir/jobs folder are taken daily and stored in S3.
+Common Freestyle Job: Configured to restore jobs using the S3 backup.
+Parameters Used in the Freestyle Job
+The freestyle job uses the following build parameters:
+
+Choice Parameter
+
+Purpose: Allows the user to select the controller for restoration.
+String Parameters
+
+Namespace: Specifies the namespace for the restoration.
+S3_Bucket_Name: Name of the S3 bucket containing the backups.
+S3_Backup_Folder: Folder in the S3 bucket containing the backup files.
+S3_Backup_File: Specific backup file to be restored.
+Format: BucketName/Folder/File
+
+Username and Password Parameters
+
+Purpose: Used to provide credentials for the restoration process.
+Pre-requisite: Create a Jenkins credential for the username and password. The freestyle job references this credential.
+Restoration Script
+A bash script has been written to handle the restoration process. The script performs the following:
+
+Fetches the specified backup file from S3.
+Extracts the contents of the backup file.
+Restores the jobs into the build_dir/jobs folder of the specified controller.
+Steps to Restore Jenkins Jobs
+Open the common Jenkins freestyle job.
+Select the controller from the Choice Parameter.
+Provide the required inputs for the following parameters:
+Namespace
+S3_Bucket_Name
+S3_Backup_Folder
+S3_Backup_File
+Provide the username and password using the Jenkins credential.
+Trigger the freestyle job.
+The restoration script will execute and restore all jobs from the specified backup file.
+
+Notes
+Ensure the S3 bucket and file paths are accurate.
+Validate the controller name and namespace before execution.
+Monitor the job logs for any errors during the restoration process.
