@@ -1,45 +1,72 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: sonarqube
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: sonarqube
-  template:
-    metadata:
-      labels:
-        app: sonarqube
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: sonarqube
-              topologyKey: "kubernetes.io/hostname"
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - ip-10-0-1-100.ec2.internal
-            - weight: 90
-              preference:
-                matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - ip-10-0-2-101.ec2.internal
-      containers:
-        - name: sonarqube
-          image: sonarqube:9.9-community
-          ports:
-            - containerPort: 9000
-          env:
-            - name: SONAR_ES_BOOTSTRAP_CHECKS_DISABLE
-              value: "true"
+from flask import Flask, Response
+from prometheus_client import Gauge, generate_latest
+import requests
+import os
+
+app = Flask(__name__)
+
+# Config (Set as env vars or hardcode for testing)
+GITLAB_TOKEN = os.getenv("GITLAB_TOKEN")
+GITLAB_PROJECT_ID = os.getenv("GITLAB_PROJECT_ID")  # numeric ID
+GITLAB_URL = os.getenv("GITLAB_URL", "https://gitlab.com")
+
+# Prometheus Metrics
+last_commit_sha = Gauge("gitlab_last_commit_sha", "Last commit SHA", ['project'])
+merge_request_count = Gauge("gitlab_merge_requests_total", "Merge Request Count", ['project'])
+pipeline_success_count = Gauge("gitlab_pipeline_success_count", "Pipeline Success Count", ['project'])
+pipeline_failed_count = Gauge("gitlab_pipeline_failed_count", "Pipeline Failed Count", ['project'])
+pipeline_running_count = Gauge("gitlab_pipeline_running_count", "Pipeline Running Count", ['project'])
+runner_status = Gauge("gitlab_runner_status", "GitLab Runner Status", ['runner_id', 'description', 'status'])
+
+headers = {
+    "PRIVATE-TOKEN": GITLAB_TOKEN
+}
+
+def fetch_gitlab_metrics():
+    project = GITLAB_PROJECT_ID
+
+    # Get last commit
+    commit_url = f"{GITLAB_URL}/api/v4/projects/{project}/repository/commits"
+    commits = requests.get(commit_url, headers=headers).json()
+    if commits:
+        sha = commits[0]["id"]
+        last_commit_sha.labels(project).set(float.fromhex(sha[:8]))
+
+    # Merge Requests
+    mr_url = f"{GITLAB_URL}/api/v4/projects/{project}/merge_requests?state=opened"
+    mrs = requests.get(mr_url, headers=headers).json()
+    merge_request_count.labels(project).set(len(mrs))
+
+    # Pipelines
+    pipeline_url = f"{GITLAB_URL}/api/v4/projects/{project}/pipelines"
+    pipelines = requests.get(pipeline_url, headers=headers).json()
+    success = failure = running = 0
+    for p in pipelines[:50]:
+        status = p["status"]
+        if status == "success":
+            success += 1
+        elif status == "failed":
+            failure += 1
+        elif status == "running":
+            running += 1
+
+    pipeline_success_count.labels(project).set(success)
+    pipeline_failed_count.labels(project).set(failure)
+    pipeline_running_count.labels(project).set(running)
+
+    # Runners
+    runners_url = f"{GITLAB_URL}/api/v4/runners/all"
+    runners = requests.get(runners_url, headers=headers).json()
+    for r in runners:
+        status = 1 if r["active"] and r["status"] == "online" else 0
+        runner_status.labels(str(r["id"]), r.get("description", ""), r["status"]).set(status)
+
+
+@app.route("/metrics")
+def metrics():
+    fetch_gitlab_metrics()
+    return Response(generate_latest(), mimetype="text/plain")
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
